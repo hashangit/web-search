@@ -1,4 +1,4 @@
-import { runAgentBrowser, ensureAgentBrowser, parseOutput, type BrowserConfig } from './browser.js';
+import { runAgentBrowser, ensureAgentBrowser, parseOutput, type BrowserConfig } from './core/browser.js';
 import {
   type SearchResult,
   type SearchResponse,

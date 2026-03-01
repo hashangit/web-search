@@ -3,7 +3,7 @@ import {
   BROWSER_TIMEOUT_MS,
   MAX_OUTPUT_SIZE,
   type EnsureResult,
-} from './utils.js';
+} from '../utils.js';
 
 export const AGENT_BROWSER_VERSION = 'latest';
 export const INSTALL_TIMEOUT_MS = 60000;

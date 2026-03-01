@@ -6,7 +6,7 @@ import {
   validateTimeout,
 } from '../utils.js';
 import { getSessionManager } from '../session-manager.js';
-import type { BrowserConfig } from '../browser.js';
+import type { BrowserConfig } from '../core/browser.js';
 
 /**
  * Perform content extraction from multiple URLs

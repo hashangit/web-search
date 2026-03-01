@@ -1,4 +1,4 @@
-import { runAgentBrowser, parseOutput, type BrowserConfig } from '../browser.js';
+import { runAgentBrowser, parseOutput, type BrowserConfig } from '../core/browser.js';
 import {
   type ExtractResult,
   type ExtractFormat,
