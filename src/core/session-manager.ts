@@ -1,4 +1,4 @@
-import { runAgentBrowser } from './core/browser.js';
+import { runAgentBrowser } from './browser.js';
 
 export interface BrowserSession {
   id: string;

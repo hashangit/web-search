@@ -7,7 +7,7 @@ import {
   validateProxy,
 } from './utils.js';
 import { searchWithTavily } from './tavily.js';
-import { getSessionManager, type BrowserSession } from './session-manager.js';
+import { getSessionManager, type BrowserSession } from './core/session-manager.js';
 import { BrowserError, SearchError, TimeoutError, toWebSearchError } from './errors.js';
 
 let browserReady = false;

@@ -11,7 +11,7 @@ import { validateInput, type SearchInput, type ExtractInput, type ResearchInput 
 import { performEnhancedSearch } from './search.js';
 import { performExtract } from './tools/extract.js';
 import { performResearch } from './tools/research.js';
-import { destroySessionManager } from './session-manager.js';
+import { destroySessionManager } from './core/session-manager.js';
 import { destroyCaches } from './cache.js';
 
 /**

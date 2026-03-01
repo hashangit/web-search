@@ -10,7 +10,7 @@ import {
   type KeyFact,
   validateTimeout,
 } from '../utils.js';
-import { getSessionManager } from '../session-manager.js';
+import { getSessionManager } from '../core/session-manager.js';
 import type { BrowserConfig } from '../core/browser.js';
 
 /**
