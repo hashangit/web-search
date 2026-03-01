@@ -1,6 +1,14 @@
-import { runAgentBrowser, ensureAgentBrowser, parseOutput } from './browser.js';
-import { type SearchResult, type SearchResponse } from './utils.js';
+import { runAgentBrowser, ensureAgentBrowser, parseOutput, type BrowserConfig } from './browser.js';
+import {
+  type SearchResult,
+  type SearchResponse,
+  type SearchInput,
+  validateTimeout,
+  validateProxy,
+} from './utils.js';
 import { searchWithTavily } from './tavily.js';
+import { getSessionManager, type BrowserSession } from './session-manager.js';
+import { BrowserError, SearchError, TimeoutError, toWebSearchError } from './errors.js';
 
 let browserReady = false;
 
@@ -116,36 +124,76 @@ function parseSnapshotText(snapshotText: string, limit: number): ParsedResult[] 
   return results;
 }
 
-async function tryBrowserSearch(searchUrl: string, limit: number, waitForCaptcha: boolean = false): Promise<SearchResult[]> {
+interface BrowserSearchOptions {
+  config: BrowserConfig;
+  waitForCaptcha?: boolean;
+  timeout: number;
+}
+
+async function tryBrowserSearch(
+  searchUrl: string,
+  limit: number,
+  options: BrowserSearchOptions
+): Promise<{ results: SearchResult[]; captchaEncountered: boolean }> {
+  const { config, waitForCaptcha = false, timeout } = options;
+  let captchaEncountered = false;
+
   try {
-    await runAgentBrowser(['open', searchUrl]);
+    await runAgentBrowser(['open', searchUrl], timeout, config);
 
     // If this is Google, wait for potential CAPTCHA completion
     if (waitForCaptcha) {
       console.error('[web-search] Google may show CAPTCHA - waiting for completion...');
+      captchaEncountered = true;
       await sleep(CAPTCHA_WAIT_MS);
     }
 
-    const snapshotJson = await runAgentBrowser(['snapshot', '--json']);
+    const snapshotJson = await runAgentBrowser(['snapshot', '--json'], timeout, config);
     const snapshot = parseOutput(snapshotJson);
 
     if (typeof snapshot === 'object' && snapshot !== null) {
       const data = snapshot as { data?: { snapshot?: string } };
       if (data.data?.snapshot) {
-        return parseSnapshotText(data.data.snapshot, limit);
+        return {
+          results: parseSnapshotText(data.data.snapshot, limit),
+          captchaEncountered,
+        };
       }
     }
-    return [];
+    return { results: [], captchaEncountered };
   } finally {
-    try {
-      await runAgentBrowser(['close']);
-    } catch {
-      // Ignore close errors
+    // Only close browser if not using session persistence
+    if (!config.sessionId) {
+      try {
+        await runAgentBrowser(['close'], 10000, config);
+      } catch {
+        // Ignore close errors
+      }
     }
   }
 }
 
-export async function performSearch(query: string, limit: number): Promise<SearchResponse> {
+export interface EnhancedSearchOptions extends SearchInput {}
+
+export async function performEnhancedSearch(options: EnhancedSearchOptions): Promise<SearchResponse> {
+  const startTime = Date.now();
+  const {
+    query,
+    limit = 5,
+    timeout_ms,
+    device,
+    proxy,
+    session_id,
+    source_preference = 'auto',
+  } = options;
+
+  const timeout = validateTimeout(timeout_ms);
+
+  // Validate proxy if provided
+  if (proxy && !validateProxy(proxy)) {
+    throw new Error('Invalid proxy URL. Must be http:// or https://');
+  }
+
   // Check/install agent-browser if needed
   if (!browserReady) {
     const ensureResult = await ensureAgentBrowser();
@@ -153,45 +201,111 @@ export async function performSearch(query: string, limit: number): Promise<Searc
       // Browser not available - go straight to Tavily if available
       const tavilyKey = getTavilyApiKey();
       if (tavilyKey) {
-        return searchWithTavily(query, limit, tavilyKey);
+        const response = await searchWithTavily(query, limit, tavilyKey);
+        return {
+          ...response,
+          search_time_ms: Date.now() - startTime,
+          fallback_used: true,
+        };
       }
       throw new Error(ensureResult.instructions);
     }
     browserReady = true;
   }
 
-  let results: SearchResult[] = [];
-  let source = 'google';
+  // Get or create session
+  const sessionManager = getSessionManager();
+  let sessionId = session_id;
+  let session: BrowserSession | null = null;
 
-  // Tier 1: Try Google (with CAPTCHA wait time)
-  try {
-    const googleUrl = buildGoogleSearchUrl(query, limit);
-    results = await tryBrowserSearch(googleUrl, limit, true); // Wait for CAPTCHA
-
-    // Check if we got blocked (Google sorry page has no real results)
-    if (results.length === 0) {
-      results = []; // Will trigger fallback
+  if (sessionId) {
+    session = await sessionManager.getSession(sessionId);
+    if (!session) {
+      // Session expired or not found, create new
+      sessionId = await sessionManager.createSession({ device, proxy });
+      session = await sessionManager.getSession(sessionId);
     }
-  } catch {
-    results = [];
+  } else {
+    // Reuse or create session
+    const result = await sessionManager.reuseOrCreate({ device, proxy });
+    sessionId = result.sessionId;
+    session = result.session;
   }
 
-  // Tier 2: Try DuckDuckGo if Google failed
-  if (results.length === 0) {
+  const browserConfig: BrowserConfig = {
+    sessionId,
+    device,
+    proxy,
+  };
+
+  let results: SearchResult[] = [];
+  let source: 'google' | 'duckduckgo' | 'tavily' = 'google';
+  let captchaEncountered = false;
+  let fallbackUsed = false;
+
+  // Determine search order based on preference
+  const shouldTryGoogle = source_preference === 'auto' || source_preference === 'google';
+  const shouldTryDuckDuckGo = source_preference === 'auto' || source_preference === 'duckduckgo';
+  const shouldTryTavily = source_preference === 'auto' || source_preference === 'tavily';
+
+  // Tier 1: Try Google (if preferred or auto)
+  if (shouldTryGoogle) {
+    try {
+      const googleUrl = buildGoogleSearchUrl(query, limit);
+      const searchResult = await tryBrowserSearch(googleUrl, limit, {
+        config: browserConfig,
+        waitForCaptcha: true,
+        timeout,
+      });
+      results = searchResult.results;
+      captchaEncountered = searchResult.captchaEncountered;
+
+      // Check if we got blocked (Google sorry page has no real results)
+      if (results.length === 0) {
+        results = []; // Will trigger fallback
+        fallbackUsed = true;
+      }
+    } catch {
+      results = [];
+      fallbackUsed = true;
+    }
+  }
+
+  // Tier 2: Try DuckDuckGo if Google failed (and DuckDuckGo is preferred or auto)
+  if (results.length === 0 && shouldTryDuckDuckGo) {
     source = 'duckduckgo';
     try {
       const ddgUrl = buildDuckDuckGoSearchUrl(query);
-      results = await tryBrowserSearch(ddgUrl, limit);
+      const searchResult = await tryBrowserSearch(ddgUrl, limit, {
+        config: browserConfig,
+        timeout,
+      });
+      results = searchResult.results;
+
+      if (results.length === 0) {
+        fallbackUsed = true;
+      }
     } catch {
       results = [];
+      fallbackUsed = true;
     }
   }
 
   // Tier 3: Fallback to Tavily API if browser search failed
-  if (results.length === 0) {
+  if (results.length === 0 && shouldTryTavily) {
     const tavilyKey = getTavilyApiKey();
     if (tavilyKey) {
-      return searchWithTavily(query, limit, tavilyKey);
+      source = 'tavily';
+      fallbackUsed = true;
+      const tavilyResponse = await searchWithTavily(query, limit, tavilyKey);
+      return {
+        ...tavilyResponse,
+        session_id: sessionId,
+        session_active: session?.isActive ?? false,
+        search_time_ms: Date.now() - startTime,
+        captcha_encountered: captchaEncountered,
+        fallback_used: fallbackUsed,
+      };
     }
   }
 
@@ -199,5 +313,15 @@ export async function performSearch(query: string, limit: number): Promise<Searc
     results,
     source,
     query,
+    session_id: sessionId,
+    session_active: session?.isActive ?? false,
+    search_time_ms: Date.now() - startTime,
+    captcha_encountered: captchaEncountered,
+    fallback_used: fallbackUsed && source !== 'google',
   };
+}
+
+// Backward compatible function for existing code
+export async function performSearch(query: string, limit: number): Promise<SearchResponse> {
+  return performEnhancedSearch({ query, limit });
 }
