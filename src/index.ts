@@ -8,7 +8,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { validateInput, type SearchInput, type ExtractInput, type ResearchInput } from './utils.js';
-import { performEnhancedSearch } from './search.js';
+import { performEnhancedSearch } from './tools/search.js';
 import { performExtract } from './tools/extract.js';
 import { performResearch } from './tools/research.js';
 import { destroySessionManager } from './core/session-manager.js';

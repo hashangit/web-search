@@ -1,14 +1,14 @@
-import { runAgentBrowser, ensureAgentBrowser, parseOutput, type BrowserConfig } from './core/browser.js';
+import { runAgentBrowser, ensureAgentBrowser, parseOutput, type BrowserConfig } from '../core/browser.js';
 import {
   type SearchResult,
   type SearchResponse,
   type SearchInput,
   validateTimeout,
   validateProxy,
-} from './utils.js';
-import { searchWithTavily } from './tavily.js';
-import { getSessionManager, type BrowserSession } from './core/session-manager.js';
-import { BrowserError, SearchError, TimeoutError, toWebSearchError } from './core/errors.js';
+} from '../utils.js';
+import { searchWithTavily } from '../tavily.js';
+import { getSessionManager, type BrowserSession } from '../core/session-manager.js';
+import { BrowserError, SearchError, TimeoutError, toWebSearchError } from '../core/errors.js';
 
 let browserReady = false;
 

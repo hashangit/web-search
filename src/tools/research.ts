@@ -1,4 +1,4 @@
-import { performEnhancedSearch, type EnhancedSearchOptions } from '../search.js';
+import { performEnhancedSearch, type EnhancedSearchOptions } from './search.js';
 import { extractFromUrls, type ExtractorOptions } from '../content/extractor.js';
 import { calculateRelevanceScore, quickRelevanceCheck } from '../content/relevance.js';
 import { extractKeyFacts, summarizeFacts } from '../content/facts.js';
