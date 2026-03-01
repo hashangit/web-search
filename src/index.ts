@@ -13,6 +13,8 @@ import { performExtract } from './tools/extract.js';
 import { performResearch } from './tools/research.js';
 import { destroySessionManager } from './core/session-manager.js';
 import { destroyCaches } from './core/cache.js';
+import { setupResourceHandlers } from './resources/index.js';
+import { setupPromptHandlers } from './prompts/index.js';
 
 /**
  * Tool annotations as per MCP spec v2025-11-25
@@ -38,14 +40,19 @@ class WebSearchServer {
       {
         capabilities: {
           tools: {},
+          resources: {},
+          prompts: {},
         },
       }
     );
 
     this.setupToolHandlers();
+    setupResourceHandlers(this.server);
+    setupPromptHandlers(this.server);
 
     this.server.onerror = (error) => console.error('[MCP Error]', error);
     process.on('SIGINT', async () => {
+      destroyCaches();
       destroySessionManager();
       await this.server.close();
       process.exit(0);
