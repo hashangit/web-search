@@ -98,20 +98,42 @@ export async function runBrowserSequence(
 }
 
 export async function ensureAgentBrowser(): Promise<EnsureResult> {
+  // First, try an actual browser operation to verify Chromium is installed
+  // Using 'close' is safe - it succeeds if browser isn't running, fails only if browser can't start
   try {
-    // Use npx which auto-installs if needed
-    await runCommand('npx', ['agent-browser@latest', '--version'], 30000);
+    console.error('Verifying browser setup...');
+    await runCommand('npx', ['agent-browser@latest', 'close'], 15000);
+    console.error('Browser verified (no stale session).');
     return { ready: true };
-  } catch {
+  } catch (error) {
+    // Browser operation failed - likely Chromium not installed
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('Browser verification failed:', errorMsg);
+    console.error('Attempting to install Chromium...');
+
     // Try to install chromium
     try {
       await runCommand('npx', ['agent-browser@latest', 'install'], CHROMIUM_INSTALL_TIMEOUT_MS);
-      return { ready: true };
-    } catch {
+      console.error('Chromium installed successfully.');
+
+      // Verify again after install
+      try {
+        await runCommand('npx', ['agent-browser@latest', 'close'], 15000);
+        return { ready: true };
+      } catch {
+        return {
+          ready: false,
+          instructions: 'Browser installed but verification failed. Run manually:\n' +
+            '  npx agent-browser@latest install\n' +
+            'Then restart the MCP server.',
+        };
+      }
+    } catch (installError) {
+      const installMsg = installError instanceof Error ? installError.message : String(installError);
       return {
         ready: false,
-        instructions: 'agent-browser setup failed. Run manually:\n' +
-          '  npx agent-browser@latest install\n' +
+        instructions: 'Chromium installation failed: ' + installMsg + '\n' +
+          'Run manually: npx agent-browser@latest install\n' +
           'Then restart the MCP server.',
       };
     }
