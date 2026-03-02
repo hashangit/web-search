@@ -13,6 +13,7 @@ import { performExtract } from './tools/extract.js';
 import { performResearch } from './tools/research.js';
 import { destroySessionManager } from './core/session-manager.js';
 import { destroyCaches } from './core/cache.js';
+import { ensureAgentBrowser } from './core/browser.js';
 import { setupResourceHandlers } from './resources/index.js';
 import { setupPromptHandlers } from './prompts/index.js';
 
@@ -437,6 +438,15 @@ class WebSearchServer {
   }
 
   async run() {
+    // Ensure browser is ready before accepting requests
+    console.error('Checking browser setup...');
+    const result = await ensureAgentBrowser();
+    if (!result.ready) {
+      console.error('Browser setup failed:', result.instructions);
+    } else {
+      console.error('Browser ready.');
+    }
+
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.error('Zyntopia Research MCP server running on stdio');

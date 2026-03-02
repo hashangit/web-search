@@ -107,7 +107,8 @@ src/
 
 - Node.js 18+
 - pnpm (recommended) or npm
-- agent-browser CLI (auto-installed)
+
+> **Note:** Browser binaries (Chromium) are automatically installed on first startup. No manual setup required.
 
 ## Installation
 
